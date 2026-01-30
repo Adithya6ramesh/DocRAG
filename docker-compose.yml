@@ -5,7 +5,7 @@ services:
     image: qdrant/qdrant:v1.7.3
     container_name: qdrant
     ports:
-      - "8000:6333"
+      - "6333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
     restart: unless-stopped
