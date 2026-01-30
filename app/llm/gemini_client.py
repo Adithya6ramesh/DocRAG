@@ -29,8 +29,8 @@ def generate_answer(query: str, context_chunks: list) -> str:
                 for i, chunk in enumerate(context_chunks)
             ])
             
-            # Create prompt
-            prompt = f"""Based on the following document excerpts, provide a comprehensive and accurate answer to the user's question.
+            # Create prompt with markdown formatting instructions
+            prompt = f"""Based on the following document excerpts, provide a comprehensive and well-formatted answer to the user's question.
 
 Context:
 {context}
@@ -39,14 +39,19 @@ Question: {query}
 
 Instructions:
 - Answer based solely on the provided context
-- If the context doesn't contain enough information, say so clearly
-- Cite which document section supports your answer
-- Be concise but thorough
+- Format your response in clean, readable Markdown
+- Use proper headings (##, ###), bullet points, and numbered lists where appropriate
+- Add line breaks between sections for readability
+- Use **bold** for emphasis on key points
+- If listing items, use proper bullet points or numbered lists
+- Keep paragraphs concise and well-spaced
+- If the context doesn't contain enough information, state it clearly
+- Cite which document section supports your answer when relevant
 
-Answer:"""
+Provide a clear, well-structured Markdown answer:"""
 
             response = client.models.generate_content(
-                model='gemini-1.5-flash',
+                model='gemini-2.5-flash',
                 contents=prompt
             )
             return response.text
@@ -73,7 +78,7 @@ def generate_summary(text: str, max_length: int = 200) -> str:
 Summary:"""
             
             response = client.models.generate_content(
-                model='gemini-1.5-flash',
+                model='gemini-2.5-flash',
                 contents=prompt
             )
             return response.text[:max_length]

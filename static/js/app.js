@@ -68,7 +68,7 @@ class DocRAGApp {
         document.getElementById('signupForm').addEventListener('submit', (e) => this.handleSignup(e));
         
         // Theme toggle
-        document.getElementById('themeToggle').addEventListener('click', this.toggleTheme);
+        document.getElementById('themeToggle').addEventListener('click', () => this.toggleTheme());
         
         // Close upload menu when clicking outside
         document.addEventListener('click', (e) => {
@@ -165,11 +165,60 @@ class DocRAGApp {
     }
 
     formatMessage(content) {
-        // Convert markdown-like formatting to HTML
-        return this.escapeHtml(content)
-            .replace(/\n/g, '<br>')
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>');
+        // Convert markdown to HTML with proper formatting
+        let html = content;
+        
+        // Handle code blocks first (```code```)
+        html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+        
+        // Escape HTML but preserve our tags
+        html = html.replace(/&/g, '&amp;')
+                   .replace(/</g, '&lt;')
+                   .replace(/>/g, '&gt;')
+                   .replace(/&lt;pre&gt;/g, '<pre>')
+                   .replace(/&lt;\/pre&gt;/g, '</pre>')
+                   .replace(/&lt;code&gt;/g, '<code>')
+                   .replace(/&lt;\/code&gt;/g, '</code>');
+        
+        // Handle headings (##, ###)
+        html = html.replace(/^### (.*?)$/gm, '<h3>$1</h3>');
+        html = html.replace(/^## (.*?)$/gm, '<h2>$1</h2>');
+        html = html.replace(/^# (.*?)$/gm, '<h1>$1</h1>');
+        
+        // Handle bold text
+        html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        
+        // Handle italic text  
+        html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        
+        // Handle bullet points (-, *, •)
+        html = html.replace(/^[\-\*•]\s+(.+)$/gm, '<li>$1</li>');
+        
+        // Handle numbered lists
+        html = html.replace(/^\d+\.\s+(.+)$/gm, '<ol-li>$1</ol-li>');
+        
+        // Wrap list items
+        html = html.replace(/(<li>.*?<\/li>\s*)+/gs, '<ul>$&</ul>');
+        html = html.replace(/(<ol-li>.*?<\/ol-li>\s*)+/gs, function(match) {
+            return '<ol>' + match.replace(/<ol-li>/g, '<li>').replace(/<\/ol-li>/g, '</li>') + '</ol>';
+        });
+        
+        // Handle paragraphs - split by double newlines
+        const parts = html.split(/\n\n+/);
+        html = parts.map(part => {
+            part = part.trim();
+            // Don't wrap if it's already wrapped in a tag
+            if (part.startsWith('<h') || part.startsWith('<ul') || 
+                part.startsWith('<ol') || part.startsWith('<pre') ||
+                part.length === 0) {
+                return part;
+            }
+            // Replace single newlines with <br>
+            part = part.replace(/\n/g, '<br>');
+            return '<p>' + part + '</p>';
+        }).join('\n');
+        
+        return html;
     }
 
     renderSources(sources) {

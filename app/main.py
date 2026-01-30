@@ -11,6 +11,7 @@ import uuid
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from qdrant_client import QdrantClient
 import os
 
 app = FastAPI(title="DocRAG API", description="Document RAG System with Multi-tenant Support")
@@ -166,7 +167,13 @@ async def process_single_file(file: UploadFile, file_ext: str, tenant_id: str):
             text = ""
             for page_num in range(len(pdf_reader.pages)):
                 page = pdf_reader.pages[page_num]
-                text += page.extract_text() + "\n"
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+            
+            # Clean up text - remove excessive whitespace
+            import re
+            text = re.sub(r'\s+', ' ', text).strip()
             
             if not text.strip():
                 return {"filename": file.filename, "error": "Could not extract text from PDF"}
@@ -248,7 +255,13 @@ async def upload_file_endpoint(
                 text = ""
                 for page_num in range(len(pdf_reader.pages)):
                     page = pdf_reader.pages[page_num]
-                    text += page.extract_text() + "\n"
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+                
+                # Clean up text - remove excessive whitespace
+                import re
+                text = re.sub(r'\s+', ' ', text).strip()
                 
                 if not text.strip():
                     return {"error": "Could not extract text from PDF. The PDF might be image-based or encrypted."}
@@ -475,3 +488,31 @@ def semantic_search(
         
     except Exception as e:
         return {"error": f"Search failed: {str(e)}"}
+
+@app.delete('/clear-documents')
+async def clear_documents(tenant_id: str = Depends(get_tenant_id)):
+    '''Clear all documents for the current tenant'''
+    try:
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+        
+        # Delete all points with this tenant_id
+        client = QdrantClient(host='localhost', port=6333)
+        
+        client.delete(
+            collection_name='document_chunks',
+            points_selector=Filter(
+                must=[
+                    FieldCondition(
+                        key='tenant_id',
+                        match=MatchValue(value=tenant_id)
+                    )
+                ]
+            )
+        )
+        
+        return {
+            'message': f'All documents cleared for tenant {tenant_id}',
+            'tenant_id': tenant_id
+        }
+    except Exception as e:
+        return {'error': f'Clear failed: {str(e)}'}
