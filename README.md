@@ -73,85 +73,69 @@ You'll also need API keys for:
 
 ## 🚀 Quick Start
 
-### 1. Clone the Repository
+### Option A: Docker Compose (Recommended - Fully Containerized)
 
+**Prerequisites:** Docker & Docker Compose installed
+
+1. **Clone the Repository**
 ```bash
 git clone https://github.com/yourusername/DocRAG.git
 cd DocRAG
 ```
 
-### 2. Set Up Python Environment
+2. **Configure Environment Variables**
 
-```bash
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### 3. Configure Environment Variables
-
-Create a `.env` file in the project root:
-
-```bash
-# Supabase Configuration
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_KEY=your_supabase_service_role_key
-SUPABASE_JWT_SECRET=your_supabase_jwt_secret
-
-# Gemini Configuration
-GEMINI_API_KEY=your_gemini_api_key
-
-# Database Configuration (optional - for advanced features)
-DATABASE_URL=your_postgresql_connection_string
-```
-
-**Getting Supabase Credentials:**
-1. Go to [Supabase Dashboard](https://app.supabase.com/)
-2. Create a new project or select existing
-3. Go to Settings → API
-4. Copy `URL`, `anon/public key`, `service_role key`
-5. Go to Settings → API → JWT Settings → Copy JWT Secret
-
-### 4. Start Qdrant Vector Database
+3. **Start All Services**
 
 ```bash
 docker-compose up -d
 ```
 
-Verify Qdrant is running:
-```bash
-curl http://localhost:6333/collections
-```
+This will start:
+- ✅ Qdrant vector database (port 6333)
+- ✅ DocRAG API service (port 8001)
 
-### 5. Update Frontend Configuration
-
-Edit `static/js/app.js` (lines 5-6) with your Supabase credentials:
-
-```javascript
-this.supabaseUrl = 'YOUR_SUPABASE_URL';
-this.supabaseAnonKey = 'YOUR_SUPABASE_ANON_KEY';
-```
-
-### 6. Run the Application
+4. **Verify Services**
 
 ```bash
-uvicorn app.main:app --host 127.0.0.1 --port 8001 --reload
+# Check container status
+docker-compose ps
+
+# Check API health
+curl http://localhost:8001/health
+
+# Check Qdrant health
+curl http://localhost:6333/health
 ```
 
-### 7. Open in Browser
+5. **Open in Browser**
 
 Navigate to [http://localhost:8001](http://localhost:8001)
 
-🎉 **You're ready to go!**
+🎉 **All services running in Docker!**
+
+**Useful Commands:**
+```bash
+# View logs
+docker-compose logs -f
+
+# View API logs only
+docker-compose logs -f docrag-api
+
+# Restart services
+docker-compose restart
+
+# Stop services
+docker-compose down
+
+# Stop and remove volumes (clean slate)
+docker-compose down -v
+
+# Rebuild after code changes
+docker-compose up -d --build
+```
+
+-
 
 ## 📖 Usage Guide
 
@@ -318,19 +302,31 @@ DocRAG/
 │   │   └── embedder.py         # Embedding generation
 │   ├── vectorstore/
 │   │   ├── __init__.py
-│   │   └── qdrant.py           # Qdrant operations
+│   │   └── qdrant.py           # Qdrant operations (env-aware)
 │   ├── llm/
-│   │   ├── __init__.py
-│   │   └── gemini_client.py    # Gemini AI integration
-│   └── models/
 │       ├── __init__.py
-│       └── schemas.py          # Pydantic models
+│       └── gemini_client.py    # Gemini AI integration
+│   
 ├── static/
 │   ├── index.html              # Main UI
 │   ├── js/
 │   │   └── app.js              # Frontend application
 │   └── css/
 │       └── style.css           # Styling
+├── Dockerfile                  # Docker image configuration
+├── docker-compose.yml          # Multi-container orchestration
+├── .dockerignore               # Docker build exclusions
+├── requirements.txt            # Python dependencies
+├── .env.example                # Environment variables template
+├── .gitignore
+└── README.md
+```
+
+**Docker Services:**
+- **qdrant**: Vector database (port 6333, 6334)
+- **docrag-api**: FastAPI application (port 8001)
+- **Volumes**: `qdrant_data` (persistent), `model_cache` (embeddings)
+- **Network**: `docrag-network` (bridge)
 ├── requirements.txt            # Python dependencies
 ├── docker-compose.yml          # Qdrant container config
 ├── .env.example                # Environment variables template
@@ -363,7 +359,6 @@ DocRAG/
 #### 1. **Ingestion Pipeline (50,000 docs/tenant in <24 hours)**
 
 **Current (Prototype):**
-- Synchronous processing: 1 document at a time
 - Average: ~10-20 docs/minute (depending on size)
 
 **Production Architecture:**
@@ -535,70 +530,6 @@ Phase 4: Global Scale (10K+ users)
 └── Cost: ~$10K+/month
 ```
 
-#### 5. **Caching Strategy**
-
-**Reduce Redundant Work:**
-
-```python
-import redis
-from functools import lru_cache
-import hashlib
-
-redis_client = redis.Redis(host='localhost', port=6379)
-
-# Cache query embeddings (1 hour TTL)
-def get_cached_embedding(query: str) -> List[float]:
-    cache_key = f"emb:{hashlib.md5(query.encode()).hexdigest()}"
-    cached = redis_client.get(cache_key)
-    
-    if cached:
-        return json.loads(cached)
-    
-    embedding = generate_embedding(query)
-    redis_client.setex(cache_key, 3600, json.dumps(embedding))
-    return embedding
-
-# Cache search results (5 minutes TTL)
-def get_cached_search(tenant_id: str, query: str, limit: int):
-    cache_key = f"search:{tenant_id}:{hashlib.md5(query.encode()).hexdigest()}:{limit}"
-    cached = redis_client.get(cache_key)
-    
-    if cached:
-        return json.loads(cached)
-    
-    results = search_embeddings(tenant_id, query, limit)
-    redis_client.setex(cache_key, 300, json.dumps(results))
-    return results
-```
-
-**Cache Hit Ratios:**
-- Embedding cache: 40-60% hit rate (common queries)
-- Search cache: 20-30% hit rate
-- Latency reduction: 80% on cache hits (500ms → 50ms)
-
-#### 6. **Monitoring & Performance Metrics**
-
-**Key Metrics to Track:**
-
-```python
-from prometheus_client import Counter, Histogram, Gauge
-
-# Ingestion metrics
-upload_total = Counter('docrag_uploads_total', 'Total document uploads')
-upload_duration = Histogram('docrag_upload_seconds', 'Upload processing time')
-chunks_processed = Counter('docrag_chunks_processed', 'Total chunks processed')
-
-# Search metrics
-search_total = Counter('docrag_searches_total', 'Total searches')
-search_latency = Histogram('docrag_search_seconds', 'Search latency')
-cache_hits = Counter('docrag_cache_hits', 'Cache hit count')
-
-# System metrics
-active_tenants = Gauge('docrag_active_tenants', 'Number of active tenants')
-total_documents = Gauge('docrag_total_documents', 'Total documents in system')
-qdrant_memory = Gauge('docrag_qdrant_memory_bytes', 'Qdrant memory usage')
-```
-
 **Alerting Thresholds:**
 - Search latency p95 > 1000ms → Scale Qdrant
 - Upload queue > 1000 documents → Add workers
@@ -639,35 +570,6 @@ qdrant_memory = Gauge('docrag_qdrant_memory_bytes', 'Qdrant memory usage')
 - Search: 5x faster (caching + optimized HNSW)
 - Reliability: 100x better (clustering + monitoring)
 
-### Cost Optimization
-
-**Smart Scaling Strategy:**
-
-```python
-# Auto-scaling rules (Kubernetes)
-if queue_length > 100:
-    scale_workers(+2)
-elif queue_length < 10:
-    scale_workers(-1)
-
-if qdrant_cpu > 80%:
-    scale_qdrant_replicas(+1)
-elif qdrant_cpu < 30%:
-    scale_qdrant_replicas(-1)
-```
-
-**Cost Breakdown (Production):**
-- Qdrant Cluster (3 nodes): $300/mo
-- Celery Workers (8 instances): $150/mo
-- Redis Cache: $30/mo
-- Supabase (Pro plan): $25/mo
-- Gemini API: $100-500/mo (usage-based)
-- **Total**: ~$600-1000/mo for 1M documents
-
-**Cost per Document:**
-- Ingestion: $0.0001 per document (embedding + storage)
-- Search: $0.001 per query (Gemini API)
-- Storage: $0.00001 per document per month (Qdrant)
 
 ## 🧪 Testing
 
@@ -684,47 +586,26 @@ python test_complete_system.py
 - Semantic search with AI
 - Multi-tenant isolation verification
 
+**With Docker:**
+```bash
+# If services are running
+docker-compose exec docrag-api python test_complete_system.py
+```
+
 ## 📦 Deployment
 
-### Option 1: Docker Deployment
+### Docker Deployment (Recommended)
 
-```dockerfile
-# Dockerfile
-FROM python:3.11-slim
+The entire application is containerized and ready to deploy with Docker Compose.
 
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+**What's Included:**
+- ✅ Qdrant vector database (with persistent storage)
+- ✅ DocRAG API service (FastAPI application)
+- ✅ Model caching (faster restarts)
+- ✅ Health checks for both services
+- ✅ Network isolation
+- ✅ Automatic restarts
 
-COPY . .
-EXPOSE 8000
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-```bash
-docker build -t docrag .
-docker run -p 8000:8000 --env-file .env docrag
-```
-
-### Option 2: Cloud Deployment
-
-**Railway / Render / Fly.io:**
-1. Connect your GitHub repository
-2. Set environment variables in dashboard
-3. Deploy automatically on git push
-
-**Environment Variables to Set:**
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_KEY`
-- `SUPABASE_JWT_SECRET`
-- `GEMINI_API_KEY`
-- `QDRANT_HOST` (use Qdrant Cloud URL)
-- `QDRANT_PORT`
-
-**For Qdrant:**
-Use [Qdrant Cloud](https://cloud.qdrant.io/) for production vector database.
 
 ## ⚙️ Configuration
 
@@ -813,6 +694,7 @@ Contributions are welcome! Please follow these steps:
 - Write descriptive commit messages
 
 
+***Architecture and ER diagram in Doc folder***
 
 
-]
+

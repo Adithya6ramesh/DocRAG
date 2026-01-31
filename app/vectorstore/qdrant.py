@@ -1,10 +1,15 @@
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 import hashlib
+import os
+
+# Get Qdrant configuration from environment variables
+QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 
 client = QdrantClient(
-    host="localhost", 
-    port=6333,
+    host=QDRANT_HOST, 
+    port=QDRANT_PORT,
     timeout=30,
     prefer_grpc=False,
     check_compatibility=False
@@ -26,6 +31,9 @@ def create_collection():
 
 def store_embeddings(tenant_id: str, document_id: str, embeddings: list):
     try:
+        # Ensure collection exists before storing
+        create_collection()
+        
         if not embeddings:
             raise ValueError("No embeddings provided")
             
@@ -79,6 +87,9 @@ def search_embeddings(tenant_id: str, query_vector: list, limit: int = 5):
     try:
         from qdrant_client.models import Filter, FieldCondition, MatchValue
         import numpy as np
+        
+        # Ensure collection exists before searching
+        create_collection()
         
         # Validate input
         if not query_vector or not isinstance(query_vector, list):

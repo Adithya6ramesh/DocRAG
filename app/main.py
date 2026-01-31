@@ -25,6 +25,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialize Qdrant collection on startup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize Qdrant collection on application startup"""
+    try:
+        create_collection()
+        print("✅ Qdrant collection initialized successfully")
+    except Exception as e:
+        print(f"⚠️ Warning: Could not initialize Qdrant collection: {e}")
+
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

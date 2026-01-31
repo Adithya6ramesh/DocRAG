@@ -1,14 +1,64 @@
-version: "3.9"
-
 services:
+  # Qdrant Vector Database
   qdrant:
     image: qdrant/qdrant:v1.7.3
     container_name: qdrant
     ports:
       - "6333:6333"
+      - "6334:6334"  # gRPC port
     volumes:
       - qdrant_data:/qdrant/storage
     restart: unless-stopped
+    networks:
+      - docrag-network
+    # No health check - let Docker Compose start docrag-api after a delay
+    # Qdrant usually starts in 5-10 seconds
+
+  # DocRAG API Service
+  docrag-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: docrag-api
+    ports:
+      - "8001:8000"  # Map host 8001 to container 8000
+    environment:
+      # Qdrant Configuration (use service name as host)
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      
+      # Supabase Configuration (from .env file)
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
+      
+      # Gemini Configuration (from .env file)
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      
+      # Database Configuration (optional)
+      - DATABASE_URL=${DATABASE_URL:-}
+      
+      # Model Cache Directory
+      - TRANSFORMERS_CACHE=/app/models
+    volumes:
+      # Mount model cache for faster restarts
+      - model_cache:/app/models
+      # Optional: Mount static files for development
+      # - ./static:/app/static
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+    networks:
+      - docrag-network
 
 volumes:
   qdrant_data:
+    driver: local
+  model_cache:
+    driver: local
+
+networks:
+  docrag-network:
+    driver: bridge
+
