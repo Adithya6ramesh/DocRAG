@@ -1,16 +1,11 @@
 // App State Management
 class DocRAGApp {
     constructor() {
-        // Supabase configuration
-        this.supabaseUrl = 'https://dyfuimuduhmigqpgcoue.supabase.co';
-        this.supabaseAnonKey = 'SUPABASE_ANON_KEY_REMOVED_FOR_SECURITY';
-        
-        // Initialize Supabase client with no session persistence
-        this.supabase = window.supabase.createClient(this.supabaseUrl, this.supabaseAnonKey, {
-            auth: {
-                persistSession: false // Disable Supabase's auto session restore
-            }
-        });
+        // Supabase configuration - loaded from server
+        this.supabaseUrl = null;
+        this.supabaseAnonKey = null;
+        this.supabase = null;
+        this.configLoaded = false;
         
         // Restore auth session from localStorage (but don't auto-login from Supabase)
         this.authToken = localStorage.getItem('authToken');
@@ -20,8 +15,34 @@ class DocRAGApp {
         this.chats = this.loadChats();
         this.theme = localStorage.getItem('theme') || 'light';
         
-        this.initializeApp();
-        this.bindEvents();
+        // Load config first, then initialize
+        this.loadConfig().then(() => {
+            this.initializeApp();
+            this.bindEvents();
+        });
+    }
+
+    async loadConfig() {
+        try {
+            const response = await fetch('/api/config');
+            if (response.ok) {
+                const config = await response.json();
+                this.supabaseUrl = config.supabaseUrl;
+                this.supabaseAnonKey = config.supabaseAnonKey;
+                
+                // Initialize Supabase client with loaded config
+                if (this.supabaseUrl && this.supabaseAnonKey) {
+                    this.supabase = window.supabase.createClient(this.supabaseUrl, this.supabaseAnonKey, {
+                        auth: {
+                            persistSession: false
+                        }
+                    });
+                    this.configLoaded = true;
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load config:', error);
+        }
     }
 
     // Initialize the application

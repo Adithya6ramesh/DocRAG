@@ -43,6 +43,16 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def health():
     return {"status": "ok", "version": "2.0"}
 
+# Config endpoint - provides Supabase public config to frontend
+@app.get("/api/config")
+async def get_config():
+    """Return public Supabase configuration for frontend"""
+    from app.auth import SUPABASE_URL, SUPABASE_ANON_KEY
+    return {
+        "supabaseUrl": SUPABASE_URL or "",
+        "supabaseAnonKey": SUPABASE_ANON_KEY or ""
+    }
+
 # Serve the frontend
 @app.get("/")
 async def serve_frontend():
