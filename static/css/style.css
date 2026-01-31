@@ -657,6 +657,61 @@ body {
     background: var(--primary-color);
 }
 
+/* Social Auth */
+.social-auth {
+    margin: 1.5rem 0;
+}
+
+.divider {
+    text-align: center;
+    position: relative;
+    margin: 1.5rem 0;
+}
+
+.divider span {
+    background: var(--surface-color);
+    padding: 0 1rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    position: relative;
+    z-index: 1;
+}
+
+.divider::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--border-color);
+}
+
+.google-btn {
+    width: 100%;
+    padding: 0.75rem;
+    background: white;
+    color: #1f2937;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    transition: all 0.2s ease;
+}
+
+.google-btn:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+}
+
+.google-btn i {
+    font-size: 1.2rem;
+}
+
 /* Responsive Design */
 @media (min-width: 768px) {
     .sidebar {

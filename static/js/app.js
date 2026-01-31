@@ -1,10 +1,23 @@
 // App State Management
 class DocRAGApp {
     constructor() {
+        // Supabase configuration
+        this.supabaseUrl = 'https://dyfuimuduhmigqpgcoue.supabase.co';
+        this.supabaseAnonKey = 'SUPABASE_ANON_KEY_REMOVED_FOR_SECURITY';
+        
+        // Initialize Supabase client with no session persistence
+        this.supabase = window.supabase.createClient(this.supabaseUrl, this.supabaseAnonKey, {
+            auth: {
+                persistSession: false // Disable Supabase's auto session restore
+            }
+        });
+        
+        // Restore auth session from localStorage (but don't auto-login from Supabase)
+        this.authToken = localStorage.getItem('authToken');
+        this.userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+        
         this.currentChatId = null;
         this.chats = this.loadChats();
-        this.authToken = localStorage.getItem('auth_token'); // Fixed key name
-        this.userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
         this.theme = localStorage.getItem('theme') || 'light';
         
         this.initializeApp();
@@ -54,8 +67,14 @@ class DocRAGApp {
         document.getElementById('fileInput').addEventListener('change', (e) => this.handleFileUpload(e, 'document'));
         document.getElementById('imageInput').addEventListener('change', (e) => this.handleFileUpload(e, 'image'));
         
-        // Auth modal
-        document.getElementById('authBtn').addEventListener('click', this.showAuthModal);
+        // Auth modal/logout
+        document.getElementById('authBtn').addEventListener('click', () => {
+            if (this.authToken) {
+                this.handleLogout();
+            } else {
+                this.showAuthModal();
+            }
+        });
         document.getElementById('closeModal').addEventListener('click', this.hideAuthModal);
         
         // Auth tabs
@@ -66,6 +85,9 @@ class DocRAGApp {
         // Auth forms
         document.getElementById('loginForm').addEventListener('submit', (e) => this.handleLogin(e));
         document.getElementById('signupForm').addEventListener('submit', (e) => this.handleSignup(e));
+        
+        // Google login
+        document.getElementById('googleLoginBtn').addEventListener('click', () => this.handleGoogleLogin());
         
         // Theme toggle
         document.getElementById('themeToggle').addEventListener('click', () => this.toggleTheme());
@@ -416,11 +438,17 @@ class DocRAGApp {
                 headers['X-Tenant-ID'] = 'demo-tenant';
             }
             
-            const response = await fetch(endpoint, {
+            const fetchOptions = {
                 method: 'POST',
-                body: formData,
-                headers
-            });
+                body: formData
+            };
+            
+            // Only add headers if they exist (don't add empty headers object)
+            if (Object.keys(headers).length > 0) {
+                fetchOptions.headers = headers;
+            }
+            
+            const response = await fetch(endpoint, fetchOptions);
             
             const result = await response.json();
             
@@ -462,17 +490,55 @@ class DocRAGApp {
         const password = document.getElementById('loginPassword').value;
         
         try {
-            // This would integrate with your Supabase auth
-            this.showToast('Login functionality coming soon!', 'info');
-            this.hideAuthModal();
+            const response = await fetch(`${this.supabaseUrl}/auth/v1/token?grant_type=password`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': this.supabaseAnonKey
+                },
+                body: JSON.stringify({
+                    email: email,
+                    password: password
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.access_token) {
+                this.authToken = data.access_token;
+                this.userInfo = {
+                    email: data.user.email,
+                    id: data.user.id
+                };
+                
+                localStorage.setItem('authToken', this.authToken);
+                localStorage.setItem('userInfo', JSON.stringify(this.userInfo));
+                
+                // Reload chats for this user
+                this.chats = this.loadChats();
+                if (this.chats.length === 0) {
+                    this.createNewChat();
+                } else {
+                    this.loadChat(this.chats[0].id);
+                }
+                this.renderChatHistory();
+                
+                this.updateAuthUI();
+                this.showToast('Login successful!', 'success');
+                this.hideAuthModal();
+            } else {
+                throw new Error(data.error_description || 'Login failed');
+            }
         } catch (error) {
-            this.showToast('Login failed', 'error');
+            console.error('Login error:', error);
+            this.showToast(error.message || 'Login failed', 'error');
         }
     }
 
     async handleSignup(event) {
         event.preventDefault();
         
+        const name = document.getElementById('signupName').value;
         const email = document.getElementById('signupEmail').value;
         const password = document.getElementById('signupPassword').value;
         const confirmPassword = document.getElementById('confirmPassword').value;
@@ -482,20 +548,134 @@ class DocRAGApp {
             return;
         }
         
-        try {
-            // This would integrate with your Supabase auth
-            this.showToast('Signup functionality coming soon!', 'info');
-            this.hideAuthModal();
-        } catch (error) {
-            this.showToast('Signup failed', 'error');
+        if (password.length < 6) {
+            this.showToast('Password must be at least 6 characters', 'error');
+            return;
         }
+        
+        try {
+            const response = await fetch(`${this.supabaseUrl}/auth/v1/signup`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': this.supabaseAnonKey
+                },
+                body: JSON.stringify({
+                    email: email,
+                    password: password,
+                    data: {
+                        display_name: name,
+                        full_name: name
+                    }
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                // Check if user was created successfully
+                if (data.user) {
+                    // If access_token exists, user can login immediately
+                    if (data.access_token) {
+                        this.authToken = data.access_token;
+                        this.userInfo = {
+                            email: data.user.email,
+                            id: data.user.id,
+                            name: name
+                        };
+                        
+                        localStorage.setItem('authToken', this.authToken);
+                        localStorage.setItem('userInfo', JSON.stringify(this.userInfo));
+                        
+                        this.updateAuthUI();
+                        this.showToast('Account created successfully!', 'success');
+                        this.hideAuthModal();
+                    } else {
+                        // Email confirmation required
+                        this.showToast('Account created! Please check your email to confirm.', 'success');
+                        this.hideAuthModal();
+                    }
+                } else {
+                    throw new Error('Signup completed but user data missing');
+                }
+            } else {
+                // Better error handling
+                let errorMessage = 'Signup failed';
+                
+                if (data.error_description) {
+                    if (data.error_description.includes('already registered') || 
+                        data.error_description.includes('already exists')) {
+                        errorMessage = 'Email already exists. Please login instead.';
+                    } else if (data.error_description.includes('invalid')) {
+                        errorMessage = 'Invalid email address';
+                    } else {
+                        errorMessage = data.error_description;
+                    }
+                } else if (data.msg) {
+                    if (data.msg.includes('User already registered')) {
+                        errorMessage = 'Email already exists. Please login instead.';
+                    } else {
+                        errorMessage = data.msg;
+                    }
+                }
+                
+                throw new Error(errorMessage);
+            }
+        } catch (error) {
+            console.error('Signup error:', error);
+            this.showToast(error.message || 'Signup failed', 'error');
+        }
+    }
+
+    async handleGoogleLogin() {
+        try {
+            const { data, error } = await this.supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin
+                }
+            });
+            
+            if (error) {
+                throw error;
+            }
+            
+            // OAuth will redirect, so we don't need to handle success here
+        } catch (error) {
+            console.error('Google login error:', error);
+            this.showToast('Google login failed: ' + error.message, 'error');
+        }
+    }
+
+    handleLogout() {
+        // Sign out from Supabase
+        this.supabase.auth.signOut();
+        
+        // Clear all user data
+        this.authToken = null;
+        this.userInfo = {};
+        this.chats = [];
+        this.currentChatId = null;
+        
+        // Clear ONLY auth-related localStorage (keep all user chats intact)
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('userInfo');
+        
+        // Update UI immediately before reload
+        this.updateAuthUI();
+        
+        // Reload the page to reset everything
+        this.showToast('Logged out successfully', 'success');
+        setTimeout(() => {
+            window.location.reload();
+        }, 300);
     }
 
     updateAuthUI() {
         const authBtn = document.getElementById('authBtn');
         const userEmail = document.getElementById('userEmail');
         
-        if (this.authToken && this.userInfo.email) {
+        if (this.authToken && this.userInfo && this.userInfo.email) {
             authBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i> Logout';
             userEmail.textContent = this.userInfo.email;
         } else {
@@ -581,12 +761,14 @@ class DocRAGApp {
 
     // Data Persistence
     loadChats() {
-        const chats = localStorage.getItem('docrag_chats');
+        const userId = this.userInfo?.id || 'guest';
+        const chats = localStorage.getItem(`docrag_chats_${userId}`);
         return chats ? JSON.parse(chats) : [];
     }
 
     saveChats() {
-        localStorage.setItem('docrag_chats', JSON.stringify(this.chats));
+        const userId = this.userInfo?.id || 'guest';
+        localStorage.setItem(`docrag_chats_${userId}`, JSON.stringify(this.chats));
     }
 
     // Utilities

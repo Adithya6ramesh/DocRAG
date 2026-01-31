@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends
-from app.auth import get_tenant_id, get_current_tenant
+from app.auth import get_tenant_id, get_current_tenant, get_tenant_id_flexible
 from fastapi import UploadFile, File
 from typing import List
 from app.ingestion.embedder import generate_embedding
@@ -104,7 +104,7 @@ def ingest_test(
 @app.post("/upload-files")
 async def upload_files_bulk(
     files: List[UploadFile] = File(...),
-    tenant_id: str = Depends(get_tenant_id)
+    tenant_id: str = Depends(get_tenant_id_flexible)
 ):
     """Bulk upload and process multiple files for the RAG system"""
     results = []
@@ -441,7 +441,7 @@ def auth_semantic_search(
 @app.post("/search")
 def semantic_search(
     query: str,
-    tenant_id: str = Depends(get_tenant_id)
+    tenant_id: str = Depends(get_tenant_id_flexible)
 ):
     try:
         if not query or len(query.strip()) < 1:
